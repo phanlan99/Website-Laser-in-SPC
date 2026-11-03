@@ -1,25 +1,65 @@
 import type { ReactNode } from "react";
-import DateRangeFilter from "@/components/statistics/DateRangeFilter";
-import HistoryTable from "@/components/statistics/HistoryTable";
-import { getHistorySummary, resolveDateRange, type HistorySummary } from "@/lib/history";
+import HistoryFilters from "@/components/statistics/HistoryFilters";
+import HistoryTable, { type FilterChip } from "@/components/statistics/HistoryTable";
+import {
+  getFilterOptions,
+  getHistorySummary,
+  resolveFilters,
+  type FilterOptions,
+  type HistoryFilters as Filters,
+  type HistorySearchParams,
+  type HistorySummary,
+} from "@/lib/history";
+import { filtersToQuery } from "@/lib/statistics-url";
 
-type SP = { searchParams: Promise<{ from?: string; to?: string }> };
+type SP = { searchParams: Promise<HistorySearchParams> };
+
+/** Số mã AUFNR tối đa lấy về mỗi lần lọc (thẻ số liệu tính trên toàn bộ số này) */
+const MAX_ROWS = 5000;
+
+/** Link trang thống kê theo bộ lọc, có thể bỏ bớt vài khóa (để tạo link gỡ lọc) */
+function toQuery(f: Filters, omit: (keyof Filters)[] = []): string {
+  return `/statistics?${filtersToQuery(f, omit)}`;
+}
 
 const nf = new Intl.NumberFormat("vi-VN");
 const viDate = (ymd: string) => ymd.split("-").reverse().join("/");
-const CARD =
+export const CARD =
   "rounded-2xl border border-[#e3e8f2] bg-white/80 shadow-[0_1px_2px_rgba(16,24,40,.04),0_8px_24px_-12px_rgba(16,24,40,.14)] backdrop-blur-md";
 
 /* ------------------------------------------------------------------ */
 /*  Bộ lọc – chỉ cần đọc URL nên hiện ra ngay                          */
 /* ------------------------------------------------------------------ */
 export async function StatisticsFilter({ searchParams }: SP) {
-  const range = resolveDateRange(await searchParams);
-  return <DateRangeFilter key={`${range.from}_${range.to}`} from={range.from} to={range.to} />;
+  const f = resolveFilters(await searchParams);
+
+  let options: FilterOptions = { productTypes: [], productMahangs: [] };
+  try {
+    options = await getFilterOptions(f);
+  } catch (e) {
+    // Không lấy được gợi ý thì bộ lọc vẫn dùng được bình thường
+    console.error("[statistics] Lỗi lấy danh sách gợi ý:", e);
+  }
+
+  return (
+    <HistoryFilters
+      key={toQuery(f)}
+      initial={{
+        from: f.from,
+        to: f.to,
+        aufnr: f.aufnr,
+        mahang: f.mahang,
+        productType: f.productType,
+        productMahang: f.productMahang,
+      }}
+      productTypes={options.productTypes}
+      productMahangs={options.productMahangs}
+    />
+  );
 }
 
 export function FilterSkeleton() {
-  return <div className={`${CARD} h-[66px] w-full animate-pulse md:w-[640px]`} aria-hidden />;
+  return <div className={`${CARD} h-[150px] w-full animate-pulse min-[1900px]:h-[74px]`} aria-hidden />;
 }
 
 /* ------------------------------------------------------------------ */
@@ -32,9 +72,10 @@ const icons = {
   box: <path d="M21 8 12 3 3 8v8l9 5 9-5V8ZM3 8l9 5 9-5M12 13v8" />,
   laser: <path d="M12 2v6M12 16v6M2 12h6M16 12h6M12 12h.01M8.5 8.5 12 12l3.5-3.5" />,
   gauge: <path d="M12 14l4-4M3.5 18a9 9 0 1 1 17 0" />,
+  alert: <path d="M12 3 2.5 20h19L12 3ZM12 10v4M12 17.2v.1" />,
 };
 
-function StatCard({
+export function StatCard({
   label,
   value,
   hint,
@@ -46,7 +87,7 @@ function StatCard({
   value: string;
   hint: string;
   icon: keyof typeof icons;
-  tone: "blue" | "brass" | "green" | "violet";
+  tone: "blue" | "brass" | "green" | "violet" | "red";
   children?: ReactNode;
 }) {
   const toneCls = {
@@ -54,6 +95,7 @@ function StatCard({
     brass: "bg-[#f7efdf] text-[#9a7838]",
     green: "bg-[#e6f6ec] text-[#16a35a]",
     violet: "bg-[#efecff] text-[#6a55d8]",
+    red: "bg-[#fdecec] text-[#d92d20]",
   }[tone];
   return (
     <div className={`${CARD} relative overflow-hidden p-4 sm:p-5`}>
@@ -78,11 +120,11 @@ function StatCard({
 /*  Số liệu + bảng – đọc URL và truy vấn database                      */
 /* ------------------------------------------------------------------ */
 export async function StatisticsData({ searchParams }: SP) {
-  const range = resolveDateRange(await searchParams);
+  const f = resolveFilters(await searchParams);
 
   let rows: HistorySummary[] = [];
   try {
-    rows = await getHistorySummary(range);
+    rows = await getHistorySummary(f, MAX_ROWS);
   } catch (e) {
     console.error("[statistics] Lỗi truy vấn HistoryLaser:", e);
     return (
@@ -96,11 +138,23 @@ export async function StatisticsData({ searchParams }: SP) {
   const totalDone = rows.reduce((s, r) => s + r.soluongkhacthucte, 0);
   const completed = rows.filter((r) => r.GAMNG > 0 && r.soluongkhacthucte >= r.GAMNG).length;
   const ratio = totalQty > 0 ? (totalDone / totalQty) * 100 : 0;
-  const rangeLabel = `${viDate(range.from)} – ${viDate(range.to)}`;
+  const rangeLabel = `${viDate(f.from)} – ${viDate(f.to)}`;
+
+  // Các bộ lọc đang áp dụng (hiển thị dạng chip, bấm để gỡ)
+  const chipDefs: [keyof Filters, string][] = [
+    ["aufnr", "AUFNR"],
+    ["mahang", "Mã hàng"],
+    ["productType", "Loại hàng"],
+    ["productMahang", "Mã viết tắt"],
+  ];
+  const chips: FilterChip[] = chipDefs
+    .filter(([k]) => f[k])
+    .map(([k, label]) => ({ label, value: f[k], href: toQuery(f, [k]) }));
+  const clearHref = toQuery(f, ["aufnr", "mahang", "productType", "productMahang"]);
 
   return (
     <>
-      <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4" aria-label="Tổng quan">
+      <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4" aria-label={chips.length ? "Tổng quan theo bộ lọc" : "Tổng quan"}>
         <StatCard label="Số mã AUFNR" value={nf.format(rows.length)} hint={`${nf.format(completed)} mã đã khắc đủ`} icon="code" tone="blue" />
         <StatCard label="Tổng số lượng" value={nf.format(totalQty)} hint="Tổng GAMNG của các mã" icon="box" tone="brass" />
         <StatCard
@@ -118,7 +172,15 @@ export async function StatisticsData({ searchParams }: SP) {
       </section>
 
       <section className="flex min-h-[440px] flex-col lg:min-h-0 lg:flex-1" aria-label="Bảng thống kê">
-        <HistoryTable rows={rows} rangeLabel={rangeLabel} />
+        <HistoryTable
+          key={toQuery(f)}
+          rows={rows}
+          rangeLabel={rangeLabel}
+          chips={chips}
+          clearHref={clearHref}
+          detailQuery={filtersToQuery(f)}
+          truncated={rows.length >= MAX_ROWS}
+        />
       </section>
     </>
   );
