@@ -6,6 +6,7 @@ import { useRef, useState } from "react";
 import Pagination, { paginate } from "@/components/statistics/Pagination";
 import type { HistorySummary } from "@/lib/history";
 import { detailHref, formatDateTime } from "@/lib/statistics-url";
+import { machineName } from "@/lib/machines";
 
 const nf = new Intl.NumberFormat("vi-VN");
 
@@ -14,10 +15,31 @@ const COLUMNS = [
   { label: "Mã hàng", field: "mahang", align: "left" },
   { label: "Loại hàng", field: "product_type", align: "left" },
   { label: "Mã viết tắt", field: "product_mahang", align: "left" },
+  { label: "Mã máy", field: "mamay", align: "left" },
   { label: "Số lượng", field: "GAMNG", align: "right" },
   { label: "Đã khắc", field: "soluongkhacthucte", align: "right" },
+  { label: "Khắc lỗi", field: "soluongkhac = 0", align: "right" },
   { label: "Cập nhật mới nhất", field: "time_new_update", align: "left" },
 ] as const;
+
+/** Nhãn mã máy, vd "A-2971" (1 AUFNR có thể khắc trên nhiều máy) */
+export function MachineBadges({ ids }: { ids: number[] }) {
+  if (ids.length === 0) return <span className="text-[#a3acc2]">—</span>;
+  return (
+    <span className="flex flex-wrap gap-1">
+      {ids.map((id) => (
+        <span
+          key={id}
+          className="inline-flex items-center gap-1 rounded-md border border-[#dbe3f4] bg-[#f3f6fd] px-1.5 py-0.5 font-mono text-[12px] font-semibold text-[#1d2b4a]"
+          title={`mamay = ${id}`}
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-[#2f5bea]" aria-hidden />
+          {machineName(id)}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 /** Một bộ lọc đang áp dụng – bấm để gỡ */
 export type FilterChip = { label: string; value: string; href: string };
@@ -97,7 +119,7 @@ export default function HistoryTable({ rows, rangeLabel, chips, clearHref, detai
             <p className="mt-1 text-xs text-[#8a94ad]">Thử mở rộng khoảng ngày hoặc bỏ bớt bộ lọc.</p>
           </div>
         ) : (
-          <table className="w-full min-w-[1040px] border-collapse text-sm">
+          <table className="w-full min-w-[1220px] border-collapse text-sm">
             <thead className="sticky top-0 z-10">
               <tr className="bg-[#f6f8fc]/95 backdrop-blur">
                 <th className="w-14 border-b border-[#e3e8f2] px-4 py-3 text-left text-xs font-semibold text-[#8a94ad] sm:px-5">#</th>
@@ -150,6 +172,9 @@ export default function HistoryTable({ rows, rangeLabel, chips, clearHref, detai
                         <span className="text-[#a3acc2]">—</span>
                       )}
                     </td>
+                    <td className="px-4 py-3">
+                      <MachineBadges ids={r.machines} />
+                    </td>
                     <td className="px-4 py-3 text-right tabular-nums text-[#3d4a66]">{nf.format(r.GAMNG)}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-3">
@@ -162,6 +187,18 @@ export default function HistoryTable({ rows, rangeLabel, chips, clearHref, detai
                           {nf.format(r.soluongkhacthucte)}
                         </span>
                       </div>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {r.errors > 0 ? (
+                        <span className="inline-flex min-w-7 items-center justify-center gap-1 rounded-full bg-[#fdecec] px-2 py-0.5 text-xs font-semibold tabular-nums text-[#b42318]">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden>
+                            <path d="M12 3 2.5 20h19L12 3ZM12 10v4M12 17.2v.1" />
+                          </svg>
+                          {nf.format(r.errors)}
+                        </span>
+                      ) : (
+                        <span className="tabular-nums text-[#c3cbdc]">0</span>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 tabular-nums text-[#5b6785]">{formatDateTime(r.time_new_update)}</td>
                     <td className="pr-4 text-[#b8c1d6] transition group-hover:translate-x-0.5 group-hover:text-[#2f5bea]">

@@ -1,16 +1,21 @@
 import type { ReactNode } from "react";
 import HistoryFilters from "@/components/statistics/HistoryFilters";
+import StatisticsCharts, { type StatisticsChartsProps } from "@/components/statistics/StatisticsCharts";
+import { PALETTE } from "@/components/charts/chart-kit";
 import HistoryTable, { type FilterChip } from "@/components/statistics/HistoryTable";
 import {
   getFilterOptions,
   getHistorySummary,
+  getStatisticsCharts,
   resolveFilters,
   type FilterOptions,
   type HistoryFilters as Filters,
   type HistorySearchParams,
   type HistorySummary,
+  type StatisticsChartData,
 } from "@/lib/history";
-import { filtersToQuery } from "@/lib/statistics-url";
+import { detailHref, filtersToQuery } from "@/lib/statistics-url";
+import { machineName, machineOptions } from "@/lib/machines";
 
 type SP = { searchParams: Promise<HistorySearchParams> };
 
@@ -33,7 +38,7 @@ export const CARD =
 export async function StatisticsFilter({ searchParams }: SP) {
   const f = resolveFilters(await searchParams);
 
-  let options: FilterOptions = { productTypes: [], productMahangs: [] };
+  let options: FilterOptions = { productTypes: [], productMahangs: [], machines: [] };
   try {
     options = await getFilterOptions(f);
   } catch (e) {
@@ -51,9 +56,12 @@ export async function StatisticsFilter({ searchParams }: SP) {
         mahang: f.mahang,
         productType: f.productType,
         productMahang: f.productMahang,
+        errorFilter: f.errorFilter,
+        machine: f.machine,
       }}
       productTypes={options.productTypes}
       productMahangs={options.productMahangs}
+      machines={machineOptions(options.machines)}
     />
   );
 }
@@ -123,8 +131,9 @@ export async function StatisticsData({ searchParams }: SP) {
   const f = resolveFilters(await searchParams);
 
   let rows: HistorySummary[] = [];
+  let chart: StatisticsChartData;
   try {
-    rows = await getHistorySummary(f, MAX_ROWS);
+    [rows, chart] = await Promise.all([getHistorySummary(f, MAX_ROWS), getStatisticsCharts(f)]);
   } catch (e) {
     console.error("[statistics] Lỗi truy vấn HistoryLaser:", e);
     return (
@@ -146,16 +155,28 @@ export async function StatisticsData({ searchParams }: SP) {
     ["mahang", "Mã hàng"],
     ["productType", "Loại hàng"],
     ["productMahang", "Mã viết tắt"],
+    ["machine", "Mã máy"],
+    ["errorFilter", "Khắc lỗi"],
   ];
+  const chipValue = (k: keyof Filters) =>
+    k === "errorFilter"
+      ? f.errorFilter === "yes"
+        ? "Có lỗi"
+        : "Không lỗi"
+      : k === "machine"
+        ? machineName(Number(f.machine))
+        : f[k];
   const chips: FilterChip[] = chipDefs
     .filter(([k]) => f[k])
-    .map(([k, label]) => ({ label, value: f[k], href: toQuery(f, [k]) }));
-  const clearHref = toQuery(f, ["aufnr", "mahang", "productType", "productMahang"]);
+    .map(([k, label]) => ({ label, value: chipValue(k), href: toQuery(f, [k]) }));
+  const clearHref = toQuery(f, ["aufnr", "mahang", "productType", "productMahang", "errorFilter", "machine"]);
+  const withErrors = rows.filter((r) => r.errors > 0).length;
+  const charts = buildCharts(rows, chart, filtersToQuery(f));
 
   return (
     <>
       <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4" aria-label={chips.length ? "Tổng quan theo bộ lọc" : "Tổng quan"}>
-        <StatCard label="Số mã AUFNR" value={nf.format(rows.length)} hint={`${nf.format(completed)} mã đã khắc đủ`} icon="code" tone="blue" />
+        <StatCard label="Số mã AUFNR" value={nf.format(rows.length)} hint={`${nf.format(completed)} mã đã khắc đủ · ${nf.format(withErrors)} mã có lỗi`} icon="code" tone="blue" />
         <StatCard label="Tổng số lượng" value={nf.format(totalQty)} hint="Tổng GAMNG của các mã" icon="box" tone="brass" />
         <StatCard
           label="Tổng đã khắc"
@@ -171,7 +192,11 @@ export async function StatisticsData({ searchParams }: SP) {
         </StatCard>
       </section>
 
-      <section className="flex min-h-[440px] flex-col lg:min-h-0 lg:flex-1" aria-label="Bảng thống kê">
+      <section aria-label="Biểu đồ phân tích">
+        <StatisticsCharts {...charts} />
+      </section>
+
+      <section className="flex flex-col" aria-label="Bảng thống kê">
         <HistoryTable
           key={toQuery(f)}
           rows={rows}
@@ -194,7 +219,63 @@ export function DataSkeleton() {
           <div key={i} className={`${CARD} h-[118px] animate-pulse`} />
         ))}
       </div>
-      <div className={`${CARD} min-h-[440px] animate-pulse lg:min-h-0 lg:flex-1`} aria-busy="true" aria-label="Đang tải dữ liệu" />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3" aria-hidden>
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className={`${CARD} h-[330px] animate-pulse ${i === 0 ? "lg:col-span-2" : ""} ${i === 5 ? "lg:col-span-2 xl:col-span-3" : ""}`} />
+        ))}
+      </div>
+      <div className={`${CARD} h-[520px] animate-pulse`} aria-busy="true" aria-label="Đang tải dữ liệu" />
     </>
   );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Gom dữ liệu biểu đồ ở server – chỉ gửi số liệu gọn xuống trình duyệt */
+/* ------------------------------------------------------------------ */
+function buildCharts(rows: HistorySummary[], chart: StatisticsChartData, query: string): StatisticsChartsProps {
+  // Tình trạng mã
+  const status = { done: 0, progress: 0, idle: 0 };
+  for (const r of rows) {
+    if (r.GAMNG > 0 && r.soluongkhacthucte >= r.GAMNG) status.done++;
+    else if (r.soluongkhacthucte > 0) status.progress++;
+    else status.idle++;
+  }
+
+  // Tỉ trọng Loại hàng theo số đã khắc (top 6, còn lại gộp "Khác")
+  const byType = new Map<string, number>();
+  for (const r of rows) {
+    const k = r.product_type || "Chưa phân loại";
+    byType.set(k, (byType.get(k) ?? 0) + r.soluongkhacthucte);
+  }
+  const typeSorted = [...byType.entries()].sort((a, b) => b[1] - a[1]);
+  const typeTop = typeSorted.slice(0, 6);
+  const typeRest = typeSorted.slice(6).reduce((s, [, v]) => s + v, 0);
+  const productTypes = [
+    ...typeTop.map(([label, value], i) => ({ label, value, color: PALETTE[i % PALETTE.length] })),
+    ...(typeRest > 0 ? [{ label: "Khác", value: typeRest, color: "#94a3b8" }] : []),
+  ];
+
+  // Top Mã viết tắt theo số đã khắc
+  const byCode = new Map<string, { done: number; qty: number; n: number }>();
+  for (const r of rows) {
+    if (!r.product_mahang) continue;
+    const v = byCode.get(r.product_mahang) ?? { done: 0, qty: 0, n: 0 };
+    v.done += r.soluongkhacthucte;
+    v.qty += r.GAMNG;
+    v.n++;
+    byCode.set(r.product_mahang, v);
+  }
+  const topCodes = [...byCode.entries()]
+    .sort((a, b) => b[1].done - a[1].done)
+    .slice(0, 7)
+    .map(([label, v]) => ({ label, sub: `${v.n} mã`, value: v.done, target: v.qty }));
+
+  // Top AUFNR nhiều lỗi
+  const topErrors = rows
+    .filter((r) => r.errors > 0)
+    .sort((a, b) => b.errors - a.errors)
+    .slice(0, 7)
+    .map((r) => ({ label: r.AUFNR, sub: r.product_mahang || r.mahang, value: r.errors, href: `${detailHref(r.AUFNR, query)}${query ? "&" : "?"}tab=error` }));
+
+  return { ...chart, status, productTypes, topCodes, topErrors };
 }

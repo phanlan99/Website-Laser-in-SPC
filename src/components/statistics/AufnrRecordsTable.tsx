@@ -4,14 +4,17 @@ import { useRef, useState } from "react";
 import Pagination, { paginate } from "@/components/statistics/Pagination";
 import type { HistoryRecord } from "@/lib/history";
 import { formatDateTime } from "@/lib/statistics-url";
+import { machineName } from "@/lib/machines";
 
-type Tab = "all" | "ok" | "error";
+export type Tab = "all" | "ok" | "error";
 
 type Props = {
   /** Mới nhất ở trên */
   records: HistoryRecord[];
   gamng: number;
   rangeLabel: string;
+  /** Tab mở sẵn – "error" khi đi từ bộ lọc "Chỉ mã có lỗi" */
+  initialTab?: Tab;
 };
 
 const nf = new Intl.NumberFormat("vi-VN");
@@ -20,14 +23,15 @@ const COLUMNS = [
   { label: "Thời gian khắc", field: "time_record", align: "left" },
   { label: "Kết quả", field: "soluongkhac", align: "left" },
   { label: "Thứ tự", field: "lũy kế", align: "right" },
+  { label: "Mã máy", field: "mamay", align: "left" },
   { label: "Mã nhân viên", field: "Code", align: "left" },
   { label: "Tên nhân viên", field: "Name", align: "left" },
   { label: "ID", field: "id", align: "right" },
 ] as const;
 
 /** Lịch sử từng lần khắc của 1 AUFNR – lọc Thành công / Lỗi, có phân trang */
-export default function AufnrRecordsTable({ records, gamng, rangeLabel }: Props) {
-  const [tab, setTab] = useState<Tab>("all");
+export default function AufnrRecordsTable({ records, gamng, rangeLabel, initialTab = "all" }: Props) {
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -95,7 +99,7 @@ export default function AufnrRecordsTable({ records, gamng, rangeLabel }: Props)
             {tab === "error" && <p className="mt-1 text-xs text-[#16a35a]">Mã này khắc ổn định 👍</p>}
           </div>
         ) : (
-          <table className="w-full min-w-[860px] border-collapse text-sm">
+          <table className="w-full min-w-[960px] border-collapse text-sm">
             <thead className="sticky top-0 z-10">
               <tr className="bg-[#f6f8fc]/95 backdrop-blur">
                 <th className="w-14 border-b border-[#e3e8f2] px-4 py-3 text-left text-xs font-semibold text-[#8a94ad] sm:px-5">#</th>
@@ -150,6 +154,7 @@ export default function AufnrRecordsTable({ records, gamng, rangeLabel }: Props)
                         <span className="text-[#a3acc2]">—</span>
                       )}
                     </td>
+                    <td className="px-4 py-3 font-mono text-[13px] font-semibold text-[#1d2b4a]">{machineName(r.mamay)}</td>
                     <td className="px-4 py-3 font-mono text-[13px] text-[#3d4a66]">{r.Code || "—"}</td>
                     <td className="px-4 py-3 text-[#0f1a2e]">{r.Name || "—"}</td>
                     <td className="px-4 py-3 text-right font-mono text-xs text-[#a3acc2]">{r.id}</td>

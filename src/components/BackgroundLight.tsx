@@ -18,7 +18,7 @@ type BackgroundLightProps = {
 
 const CSS = `
 .lb-bg{position:relative;isolation:isolate;overflow:hidden;background:linear-gradient(180deg,#f8f9fd 0%,#eef2f9 100%);color:#0f1a2e}
-.lb-layer{position:absolute;inset:0;pointer-events:none}
+.lb-layer{position:fixed;inset:0;pointer-events:none}
 .lb-blob{position:absolute;border-radius:50%;filter:blur(56px);opacity:.8;will-change:transform}
 .lb-blob-a{width:46vmax;height:46vmax;left:-12vmax;top:-16vmax;background:radial-gradient(circle,#cddaff 0%,rgba(205,218,255,0) 70%);animation:lb-drift-a 26s ease-in-out infinite alternate}
 .lb-blob-b{width:40vmax;height:40vmax;right:-14vmax;top:8vh;background:radial-gradient(circle,#f4e4c4 0%,rgba(244,228,196,0) 70%);animation:lb-drift-b 32s ease-in-out infinite alternate}
@@ -27,9 +27,9 @@ const CSS = `
 .lb-dots-hot{background-image:radial-gradient(circle,rgba(176,138,74,.9) 1.2px,transparent 1.8px);background-size:22px 22px;-webkit-mask-image:linear-gradient(115deg,transparent 44%,#000 50%,transparent 56%);mask-image:linear-gradient(115deg,transparent 44%,#000 50%,transparent 56%);-webkit-mask-size:300% 100%;mask-size:300% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;animation:lb-sweep 12s cubic-bezier(.45,0,.25,1) infinite}
 .lb-highlight{background:radial-gradient(ellipse 70% 45% at 50% 0%,rgba(255,255,255,.85),transparent 70%)}
 .lb-scan{position:absolute;left:0;right:0;top:0;height:140px;pointer-events:none;background:linear-gradient(180deg,transparent 0%,rgba(47,91,234,.05) 70%,rgba(47,91,234,.28) 98.5%,rgba(47,91,234,.6) 99.5%,transparent 100%);animation:lb-scan 10s linear infinite}
-.lb-mark{position:absolute;width:64px;height:64px;color:rgba(29,63,143,.28);pointer-events:none}
-.lb-mark-tr{top:20px;right:24px}
-.lb-mark-bl{bottom:20px;left:24px}
+.lb-mark{position:fixed;width:64px;height:64px;color:rgba(29,63,143,.28);pointer-events:none}
+.lb-mark-tr{top:20px;right:96px}
+.lb-mark-bl{bottom:20px;right:24px}
 .lb-mark .lb-ring{transform-box:fill-box;transform-origin:center;animation:lb-spin 40s linear infinite}
 .lb-content{position:relative;z-index:1}
 @keyframes lb-drift-a{to{transform:translate3d(8vw,6vh,0) scale(1.1)}}

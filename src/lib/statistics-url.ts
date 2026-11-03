@@ -7,6 +7,8 @@ const PARAM: [keyof HistoryFilters, string][] = [
   ["mahang", "mahang"],
   ["productType", "ptype"],
   ["productMahang", "pcode"],
+  ["errorFilter", "err"],
+  ["machine", "may"],
 ];
 
 /** Bộ lọc → query string "from=..&to=..&ptype=.." (bỏ ô trống, có thể bỏ bớt khóa) */

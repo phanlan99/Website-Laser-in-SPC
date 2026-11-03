@@ -10,19 +10,17 @@ type PageProps = {
 };
 
 /**
- * Trang thống kê – layout toàn màn hình:
- * - Desktop: cao đúng 1 màn hình, bảng chiếm phần còn lại và tự cuộn bên trong
- * - Mobile: cuộn bình thường
+ * Trang thống kê: tiêu đề → bộ lọc → thẻ số liệu → biểu đồ → bảng chi tiết (cuộn xuống)
  * Phần động (đọc URL, truy vấn DB) nằm trong <Suspense> theo yêu cầu của cacheComponents.
  */
 export default function StatisticsPage({ searchParams }: PageProps) {
   return (
-    <div className="min-h-screen bg-[#eef2f9] lg:flex lg:h-screen">
+    <div className="min-h-screen bg-[#eef2f9] lg:flex">
       <Sidebar />
-      <main className="min-w-0 flex-1 lg:h-screen">
+      <main className="min-w-0 flex-1">
         <BackgroundLight
-          className="min-h-full lg:h-full"
-          contentClassName={`${appFont.className} flex min-h-[calc(100dvh-61px)] flex-col gap-4 p-4 sm:p-6 lg:h-full lg:min-h-0 xl:px-8`}
+          className="min-h-screen"
+          contentClassName={`${appFont.className} flex flex-col gap-4 p-4 pb-10 sm:p-6 sm:pb-12 xl:px-8`}
         >
           {/* Tiêu đề gọn 1 dòng */}
           <header className="flex items-center gap-3">

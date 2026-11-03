@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
+import type { MachineOption } from "@/lib/machines";
 
 /** Giá trị bộ lọc trên form (khớp với HistoryFilters ở server) */
 export type FilterValues = {
@@ -11,12 +12,17 @@ export type FilterValues = {
   mahang: string;
   productType: string;
   productMahang: string;
+  /** "" | "yes" | "no" */
+  errorFilter: string;
+  /** Số máy (mamay), "" = tất cả */
+  machine: string;
 };
 
 type Props = {
   initial: FilterValues;
   productTypes: string[];
   productMahangs: string[];
+  machines: MachineOption[];
 };
 
 function toYMD(d: Date): string {
@@ -51,6 +57,8 @@ function buildQuery(v: FilterValues): string {
   if (v.mahang.trim()) p.set("mahang", v.mahang.trim());
   if (v.productType) p.set("ptype", v.productType);
   if (v.productMahang.trim()) p.set("pcode", v.productMahang.trim());
+  if (v.machine) p.set("may", v.machine);
+  if (v.errorFilter) p.set("err", v.errorFilter);
   return p.toString();
 }
 
@@ -63,7 +71,7 @@ const labelCls = "mb-1 block text-[11px] font-semibold uppercase tracking-wide t
  * Bấm Tìm kiếm → đẩy lên URL → Server Component truy vấn lại database,
  * nên 4 thẻ số liệu và bảng luôn tính theo đúng bộ lọc.
  */
-export default function HistoryFilters({ initial, productTypes, productMahangs }: Props) {
+export default function HistoryFilters({ initial, productTypes, productMahangs, machines }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const listId = useId();
@@ -80,7 +88,9 @@ export default function HistoryFilters({ initial, productTypes, productMahangs }
     startTransition(() => router.push(`${pathname}?${buildQuery(fixed)}`));
   };
 
-  const hasFieldFilter = Boolean(initial.aufnr || initial.mahang || initial.productType || initial.productMahang);
+  const hasFieldFilter = Boolean(
+    initial.aufnr || initial.mahang || initial.productType || initial.productMahang || initial.errorFilter || initial.machine,
+  );
 
   return (
     <form
@@ -130,7 +140,7 @@ export default function HistoryFilters({ initial, productTypes, productMahangs }
 
         {/* -------- Lọc theo mã -------- */}
         <div className="flex flex-1 flex-col gap-3 lg:flex-row lg:items-end">
-          <fieldset className="grid flex-1 grid-cols-2 gap-3 md:grid-cols-4">
+          <fieldset className="grid flex-1 grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
             <legend className="sr-only">Lọc theo mã</legend>
             <label className="block">
               <span className={labelCls}>AUFNR</span>
@@ -170,6 +180,29 @@ export default function HistoryFilters({ initial, productTypes, productMahangs }
                 ))}
               </datalist>
             </label>
+            <label className="block">
+              <span className={labelCls}>Mã máy</span>
+              <select value={v.machine} onChange={set("machine")} className={`${fieldCls} pr-8`}>
+                <option value="">Tất cả máy</option>
+                {machines.map((m) => (
+                  <option key={m.id} value={String(m.id)}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className={labelCls}>Khắc lỗi</span>
+              <select
+                value={v.errorFilter}
+                onChange={set("errorFilter")}
+                className={`${fieldCls} pr-8 ${v.errorFilter === "yes" ? "border-[#f3c7c7] bg-[#fff6f5] text-[#b42318]" : ""}`}
+              >
+                <option value="">Tất cả</option>
+                <option value="yes">Chỉ mã có lỗi</option>
+                <option value="no">Chỉ mã không lỗi</option>
+              </select>
+            </label>
           </fieldset>
 
           <div className="flex gap-2">
@@ -177,7 +210,7 @@ export default function HistoryFilters({ initial, productTypes, productMahangs }
               <button
                 type="button"
                 disabled={pending}
-                onClick={() => apply({ ...v, aufnr: "", mahang: "", productType: "", productMahang: "" })}
+                onClick={() => apply({ ...v, aufnr: "", mahang: "", productType: "", productMahang: "", errorFilter: "", machine: "" })}
                 className="h-10 flex-1 whitespace-nowrap rounded-lg border border-[#d9e0ec] bg-white px-4 text-sm font-semibold text-[#5b6785] transition hover:border-[#c3cbdc] hover:text-[#0f1a2e] lg:flex-none"
               >
                 Xóa lọc

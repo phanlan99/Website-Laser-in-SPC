@@ -1,11 +1,15 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import AufnrCharts, { type AufnrChartsProps } from "@/components/statistics/AufnrCharts";
 import AufnrRecordsTable from "@/components/statistics/AufnrRecordsTable";
 import { CARD, StatCard } from "@/components/statistics/StatisticsContent";
+import { MachineBadges } from "@/components/statistics/HistoryTable";
+import { machineName } from "@/lib/machines";
 import { getAufnrDetail, resolveFilters, type AufnrDetail, type HistorySearchParams } from "@/lib/history";
 import { detailHref, filtersToQuery, formatDateTime } from "@/lib/statistics-url";
 
-export type DetailSearchParams = HistorySearchParams & { scope?: string };
+/** scope=all: toàn bộ thời gian · tab=error: mở sẵn tab Lỗi */
+export type DetailSearchParams = HistorySearchParams & { scope?: string; tab?: string };
 
 type Props = {
   params: Promise<{ aufnr: string }>;
@@ -31,12 +35,16 @@ export async function AufnrDetailView({ params, searchParams }: Props) {
   const all = sp.scope === "all";
   const query = filtersToQuery(f);
   const backHref = `/statistics${query ? `?${query}` : ""}`;
-  const rangeLabel = all ? "Toàn bộ thời gian" : `${viDate(f.from)} – ${viDate(f.to)}`;
+  const rangeLabel =
+    (all ? "Toàn bộ thời gian" : `${viDate(f.from)} – ${viDate(f.to)}`) +
+    (f.machine ? ` · Máy ${machineName(Number(f.machine))}` : "");
+  // Link bỏ lọc máy (giữ nguyên các bộ lọc khác)
+  const allMachinesHref = detailHref(aufnr, filtersToQuery(f, ["machine"]), all);
 
   let detail: AufnrDetail | null = null;
   let failed = false;
   try {
-    detail = await getAufnrDetail(aufnr, all ? null : f);
+    detail = await getAufnrDetail(aufnr, all ? null : f, f.machine);
   } catch (e) {
     console.error("[statistics/aufnr] Lỗi truy vấn:", e);
     failed = true;
@@ -70,13 +78,30 @@ export async function AufnrDetailView({ params, searchParams }: Props) {
         </div>
       </div>
 
-      <div className="flex self-start rounded-lg bg-white/80 p-1 shadow-sm ring-1 ring-[#e3e8f2] sm:self-auto" aria-label="Phạm vi thời gian">
+      <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+      {f.machine && (
+        <Link
+          href={allMachinesHref}
+          title="Bỏ lọc máy – xem tất cả máy"
+          className="group inline-flex items-center gap-1.5 rounded-full border border-[#d6e0ff] bg-[#eef3ff] py-1 pl-2.5 pr-1.5 text-xs text-[#1d3f8f] transition hover:border-[#2f5bea]/40"
+        >
+          <span className="text-[#5b6785]">Mã máy:</span>
+          <span className="font-mono font-semibold">{machineName(Number(f.machine))}</span>
+          <span className="flex h-4 w-4 items-center justify-center rounded-full text-[#5b6785] group-hover:bg-[#2f5bea] group-hover:text-white" aria-hidden>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+              <path d="M6 6l12 12M18 6 6 18" />
+            </svg>
+          </span>
+        </Link>
+      )}
+      <div className="flex rounded-lg bg-white/80 p-1 shadow-sm ring-1 ring-[#e3e8f2]" aria-label="Phạm vi thời gian">
         <Link href={detailHref(aufnr, query)} aria-current={!all ? "page" : undefined} className={scopeBtn(!all)}>
           {viDate(f.from)} – {viDate(f.to)}
         </Link>
         <Link href={detailHref(aufnr, query, true)} aria-current={all ? "page" : undefined} className={scopeBtn(all)}>
           Toàn bộ thời gian
         </Link>
+      </div>
       </div>
     </header>
   );
@@ -135,6 +160,7 @@ export async function AufnrDetailView({ params, searchParams }: Props) {
       field: "product_mahang",
       value: <span className="font-mono text-[#1d3f8f]">{s.product_mahang || "—"}</span>,
     },
+    { label: "Mã máy", field: "mamay", value: <MachineBadges ids={s.machines} /> },
     { label: "Cập nhật mới nhất", field: "time_new_update", value: <span className="tabular-nums">{formatDateTime(s.time_new_update)}</span> },
   ];
 
@@ -183,8 +209,18 @@ export async function AufnrDetailView({ params, searchParams }: Props) {
         </StatCard>
       </section>
 
-      <section className="flex min-h-[420px] flex-col lg:min-h-0 lg:flex-1" aria-label="Lịch sử khắc">
-        <AufnrRecordsTable key={`${aufnr}_${all}_${query}`} records={detail.records} gamng={s.GAMNG} rangeLabel={rangeLabel} />
+      <section aria-label="Biểu đồ phân tích mã">
+        <AufnrCharts {...buildAufnrCharts(detail)} />
+      </section>
+
+      <section className="flex flex-col" aria-label="Lịch sử khắc">
+        <AufnrRecordsTable
+          key={`${aufnr}_${all}_${query}`}
+          records={detail.records}
+          gamng={s.GAMNG}
+          rangeLabel={rangeLabel}
+          initialTab={(f.errorFilter === "yes" || sp.tab === "error") && s.errors > 0 ? "error" : "all"}
+        />
       </section>
     </>
   );
@@ -202,7 +238,78 @@ export function DetailSkeleton() {
           <div key={i} className={`${CARD} h-[118px] animate-pulse ${i === 0 ? "col-span-2 xl:col-span-1" : ""}`} />
         ))}
       </div>
-      <div className={`${CARD} min-h-[420px] animate-pulse lg:min-h-0 lg:flex-1`} aria-busy="true" aria-label="Đang tải dữ liệu" />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3" aria-hidden>
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div key={i} className={`${CARD} h-[320px] animate-pulse ${i === 1 ? "xl:col-span-2" : ""}`} />
+        ))}
+      </div>
+      <div className={`${CARD} h-[520px] animate-pulse`} aria-busy="true" aria-label="Đang tải dữ liệu" />
     </>
   );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Dữ liệu biểu đồ của 1 AUFNR (tính ở server, gửi gọn xuống client)    */
+/* ------------------------------------------------------------------ */
+const MAX_POINTS = 400;
+
+function buildAufnrCharts(detail: AufnrDetail): AufnrChartsProps {
+  const asc = [...detail.records].reverse(); // cũ → mới
+  const s = detail.summary;
+
+  // Đường tiến độ tích lũy (rút gọn điểm nếu quá nhiều, luôn giữ lần lỗi & điểm cuối)
+  let cum = 0;
+  const all = asc.map((r, idx) => {
+    if (r.soluongkhac === 1) cum++;
+    return {
+      i: idx + 1,
+      cum,
+      ok: r.soluongkhac === 1,
+      time: formatDateTime(r.time_record),
+      who: [r.Code, r.Name].filter(Boolean).join(" · "),
+    };
+  });
+  const step = Math.ceil(all.length / MAX_POINTS);
+  const points = step <= 1 ? all : all.filter((p, k) => !p.ok || k % step === 0 || k === all.length - 1);
+
+  // Theo nhân viên
+  const byOp = new Map<string, { label: string; sub: string; ok: number; total: number }>();
+  for (const r of asc) {
+    const key = r.Code || r.Name || "Không rõ";
+    const v = byOp.get(key) ?? { label: r.Name || r.Code || "Không rõ", sub: r.Name ? r.Code : "", ok: 0, total: 0 };
+    v.total++;
+    if (r.soluongkhac === 1) v.ok++;
+    byOp.set(key, v);
+  }
+  const operators = [...byOp.values()]
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 6)
+    .map((v) => ({ label: v.label, sub: `${v.sub ? `${v.sub} · ` : ""}${v.total - v.ok} lỗi`, value: v.ok, target: v.total }));
+
+  // Theo giờ – chỉ hiện khoảng giờ có hoạt động (tối thiểu 8 cột)
+  const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, ok: 0, err: 0 }));
+  for (const r of asc) {
+    const h = Number(r.time_record.slice(11, 13));
+    if (h >= 0 && h < 24) {
+      if (r.soluongkhac === 1) hours[h].ok++;
+      else hours[h].err++;
+    }
+  }
+  const active = hours.filter((h) => h.ok + h.err > 0).map((h) => h.hour);
+  let lo = active.length ? Math.min(...active) : 7;
+  let hi = active.length ? Math.max(...active) : 17;
+  while (hi - lo < 7) {
+    if (lo > 0) lo--;
+    if (hi - lo < 7 && hi < 23) hi++;
+  }
+
+  return {
+    done: s.soluongkhacthucte,
+    gamng: s.GAMNG,
+    errors: s.errors,
+    records: s.records,
+    points,
+    operators,
+    hours: hours.slice(lo, hi + 1),
+  };
 }
